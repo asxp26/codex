@@ -4,6 +4,14 @@ const AUTH_HEADERS = API_KEY ? {
     "Authorization": `Bearer ${API_KEY}`
 } : {};
 
+// OpenRouter API Configuration
+let OPENROTER_API_KEY = localStorage.getItem('OPENROUTER_API_KEY') || '';
+
+function setOpenRouterApiKey(key) {
+    OPENROTER_API_KEY = key;
+    localStorage.setItem('OPENROUTER_API_KEY', key);
+}
+
 const CE = "CE";
 const EXTRA_CE = "EXTRA_CE";
 
@@ -53,36 +61,50 @@ var layoutConfig = {
     content: [{
         type: "row",
         content: [{
-            type: "component",
-            width: 66,
-            componentName: "source",
-            id: "source",
-            title: "Source Code",
-            isClosable: false,
-            componentState: {
-                readOnly: false
-            }
-        }, {
-            type: "column",
+            type: "row",
+            width: 80,
             content: [{
                 type: "component",
-                componentName: "stdin",
-                id: "stdin",
-                title: "Input",
+                width: 66,
+                componentName: "source",
+                id: "source",
+                title: "Source Code",
                 isClosable: false,
                 componentState: {
                     readOnly: false
                 }
             }, {
-                type: "component",
-                componentName: "stdout",
-                id: "stdout",
-                title: "Output",
-                isClosable: false,
-                componentState: {
-                    readOnly: true
-                }
+                type: "column",
+                content: [{
+                    type: "component",
+                    componentName: "stdin",
+                    id: "stdin",
+                    title: "Input",
+                    isClosable: false,
+                    componentState: {
+                        readOnly: false
+                    }
+                }, {
+                    type: "component",
+                    componentName: "stdout",
+                    id: "stdout",
+                    title: "Output",
+                    isClosable: false,
+                    componentState: {
+                        readOnly: true
+                    }
+                }]
             }]
+        }, {
+            type: "component",
+            width: 20,
+            componentName: "chat",
+            id: "chat",
+            title: "Code Assistant",
+            isClosable: false,
+            componentState: {
+                readOnly: false
+            }
         }]
     }]
 };
@@ -578,6 +600,232 @@ $(document).ready(async function () {
                     enabled: false
                 }
             });
+        });
+
+        layout.registerComponent("chat", function (container, state) {
+            const chatContainer = document.createElement("div");
+            chatContainer.className = "chat-container h-full flex flex-col bg-[#1e1e1e]";
+
+            chatContainer.innerHTML = `
+             <div class="chat-header bg-[#252526] border-b border-[#3e3e42] p-4">
+                    <div class="chat-header-content space-y-1">
+                        <h3 class="chat-title text-lg font-semibold text-[#cccccc] flex items-center gap-2">
+                            <svg class="w-5 h-5 text-[#0078d4]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"/>
+                            </svg>
+                            Code Assistant
+                        </h3>
+                        <div class="flex items-center gap-2">
+                            <input
+                                type="password"
+                                id="openrouter-api-key"
+                                class="flex-1 bg-[#1e1e1e] text-[#cccccc] text-sm rounded border border-[#3e3e42] px-2 py-1 focus:outline-none focus:border-[#0078d4]"
+                                "
+                                placeholder="Enter OpenRouter API Key"
+                                value="${OPENROTER_API_KEY}"
+                            />
+                            <button
+                                id="save-api-key"
+                                class="bg-[#0078d4] hover:bg-[#006bb3] text-white text-sm px-4 py-1 rounded transition-colors"
+                            >
+                                Save Key
+                            </button>
+                        </div>
+                        <p class="chat-description text-sm text-[#8a8a8a]">Ask questions about your code or get help with programming</p>
+                    </div>
+                </div>
+                <div class="messages flex-1 overflow-y-auto p-4 space-y-4"></div>
+                <div class="chat-input-container border-t border-[#3e3e42] p-4 bg-[#252526]">
+                    <div class="chat-input-wrapper flex gap-2">
+                        <textarea
+                            class="chat-input flex-1 bg-[#1e1e1e] text-[#cccccc] rounded-lg border border-[#3e3e42] p-3 focus:outline-none focus:border-[#0078d4] resize-none"
+                            rows="1"
+                            placeholder="Ask about the code..."></textarea>
+                        <button class="snd-btn bg-[#0078d4] hover:bg-[#006bb3] text-white px-4 py-2 rounded-lg flex items-center gap-2 trasnition-colors" title="Send message (Enter)">
+                            <span>Send</span>
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+            `;
+
+            const messagesEl = chatContainer.querySelector(".messages");
+            const inputEl = chatContainer.querySelector("textarea");
+            const sendBtn = chatContainer.querySelector(".snd-btn");
+
+            // Auto-resize textarea as user types
+            inputEl.addEventListener("input", function () {
+                this.style.height = "auto";
+                this.style.height = Math.min(this.scrollHeight, 200) + "px";
+        
+            });
+
+            function formatTimestamp() {
+                const now = new Date();
+                return now.toLocaleTimeString('en-US', { 
+                    hour: 'numeric', 
+                    minute: '2-digit', 
+                    hour12: true 
+                });
+            }
+
+            // Add markdown parsing function
+            function markdownToHtml(text) {
+                // Basic markdown parsing with XSS protection
+                return text
+                    .replace(/&/g, '&amp;').replace(/</g, '&lt;').
+                    replace(/>/g, '&gt;') // Escape HTML first
+                    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>') // Bold
+                    .replace(/\*(.*?)\*/g, '<em>$1</em>') // Italics
+                    .replace(/`{3}([\s\S]*?)`{3}/g, '<pre><code>$1</code></pre>') // Code block
+                    .replace(/`(.*?)`/g, '<code>$1</code>') // Inline code
+                    .replace(/\[(.*?)\]\((.*?)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>') // Links
+                    .replace(/\n/g, '<br>') // Newlines
+            }
+
+            function addUserMessage(message) {
+                const messageEl = `
+                    <div class="message-wrapper user-message-wrapper flex justify-end">
+                        <div class="message user-message bg-[#0078d4] text-[#ffffff] rounded-2xl rounded-tr-sm px-4 py-2 max-w-[80%]">
+                            <div class="message-content prose prose-invert">${markdownToHtml(message)}</div>
+                            <div class="message-timestamp text-xs text-[#e6e6e6] mt-1">${formatTimestamp()}</div>
+                        </div>
+                    </div>
+                `;
+
+                messagesEl.insertAdjacentHTML("beforeend", messageEl);
+                messagesEl.scrollTop = messagesEl.scrollHeight;
+            }
+
+            function addAssistantMessage(message) {
+                const messageHTML = `
+                    <div class="message-wrapper assistant-message-wrapper flex justify-start">
+                        <div class="message assistant-message bg-[#252526] text-[#cccccc] rounded-2xl rounded-tl-sm px-4 py-2 max-w-[80%]">
+                            <div class="message-content prose prose-invert">${markdownToHtml(message)}</div>
+                            <div class="message-timestamp text-xs text-[#8a8a8a] mt-1">${formatTimestamp()}</div>
+                        </div>
+                    </div>
+                `;
+
+                messagesEl.insertAdjacentHTML("beforeend", messageHTML);
+                messagesEl.scrollTop = messagesEl.scrollHeight;
+            }
+
+            function addTypingIndicator() {
+                const indicatorHTML = `
+                    <div class="message-wrapper assistant-message-wrapper flex justify-start" id="typing-indicator">
+                        <div class="message assistant-message bg-[#252526] text-[#cccccc] rounded-2xl rounded-tl-sm px-4 py-2">
+                            <div class="typing-indicator flex gap-1">
+                                <div class="typing-dot w-2 h-2 bg-[#8a8a8a] rounded-full animate-bounce"></div>
+                                <div class="typing-dot w-2 h-2 bg-[#8a8a8a] rounded-full animate-bounce" style="animation-delay: 0.2s"></div>
+                                <div class="typing-dot w-2 h-2 bg-[#8a8a8a] rounded-full animate-bounce" style="animation-delay: 0.4s"></div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+
+                messagesEl.insertAdjacentHTML("beforeend", indicatorHTML);
+                messagesEl.scrollTop = messagesEl.scrollHeight;
+            }
+
+            function removeTypingIndicator() {
+                const indicator = messagesEl.querySelector("#typing-indicator");
+                if (indicator) {
+                    indicator.remove();
+                }
+            }
+
+            async function sendMessage() {
+                const message = inputEl.value.trim();
+                if (!message) return;
+                // Reset input and its height
+                inputEl.value = "";
+                inputEl.style.height = "56px";
+
+                addUserMessage(message);
+                addTypingIndicator();
+                
+                const codeContext = {
+                    source_code: sourceEditor.getValue(),
+                    language: $selectLanguage.find(":selected").text(),
+                    stdin: stdinEditor.getValue(),
+                    stdout: stdoutEditor.getValue()
+                }
+
+                const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "Authorization": `Bearer ${OPENROTER_API_KEY}`,
+                },
+                body: JSON.stringify({
+                    model: 'meta-llama/llama-3.2-3b-instruct:free',
+                    messages: [
+                        {
+                            role: 'system',
+                            content: `You are an expert programming assistant. You have access to the following code context:
+
+                                Language: ${codeContext.language}
+                                Source Code:
+                                \`\`\`
+                                ${codeContext.source_code}
+                                \`\`\`
+                                ${codeContext.stdin ? `Input:\n$
+                                {codeContext.stdin}\n` : ""}
+                                ${codeContext.stdout ? `Output:\n$
+                                {codeContext.stdout}\n` : ""}
+
+                                Provide clear, concise, and accurate responses about the code. If suggesting code changes, explain the reasoning and ensure they follow best practices.`
+                        },
+                        {
+                            role: 'user',
+                            content: `Here is the user's message:
+                            
+                            <user_message>
+                                ${message}
+                            </user_message>
+                            
+                            Provide a detailed and accurate response to the use's message based on the code context. If suggesting code changes, explain the reasoning and ensure they follow best practices.`
+                        }
+                    ]
+                })
+            });
+
+            if (!response.ok) {
+                throw new Error(`API request failed: ${response.statusText}`);
+            }
+
+            const data = await response.json();
+            const assistantMessage = data.choices[0].message.content;
+            removeTypingIndicator();
+            addAssistantMessage(assistantMessage);
+
+            }
+
+            // Event listeners
+            sendBtn.addEventListener("click", sendMessage);
+            inputEl.addEventListener("keydown", (e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    sendMessage();
+                }
+            });
+
+            // API Key Handling
+            const apiKeyInput = chatContainer.querySelector("#openrouter-api-key");
+            const saveKeyBtn = chatContainer.querySelector("#save-api-key");
+
+            saveKeyBtn.addEventListener("click", () => {
+                const newKey = apiKeyInput.value.trim();
+                setOpenRouterApiKey(newKey);
+                addAssistantMessage("API Key saved successfully.");
+            });
+
+            container.getElement().append(chatContainer);
+
         });
 
         layout.on("initialised", function () {
