@@ -12,6 +12,20 @@ function setOpenRouterApiKey(key) {
     localStorage.setItem('OPENROUTER_API_KEY', key);
 }
 
+let SELECTED_MODEL = localStorage.getItem('SELECTED_MODEL') || 'meta-llama/llama-3.2-3b-instruct:free';
+
+const AVAILABLE_MODELS = [
+    { id: 'meta-llama/llama-3.2-3b-instruct:free', name: 'Llama 3.2 3B (Free)' },
+    { id: 'google/gemini-2.0-flash-thinking-exp-1219:free', name: 'Gemini 2.0 Flash (Free)' },
+    { id: 'deepseek/deepseek-r1-distill-llama-70b:free', name: 'DeepSeek R1 Distill (Free)' },
+    { id: 'qwen/qwen2.5-vl-72b-instruct:free', name: 'Qwen 2.5 VL (Free)' },
+];
+
+function setSelectedModel(model) {
+    SELECTED_MODEL = model;
+    localStorage.setItem('SELECTED_MODEL', model);
+}
+
 const CE = "CE";
 const EXTRA_CE = "EXTRA_CE";
 
@@ -632,6 +646,16 @@ $(document).ready(async function () {
                                 Save Key
                             </button>
                         </div>
+                        <div class="flex items-center gap-2">
+                            <select
+                                id="model-selecter"
+                                class="flex-1 bg-[#1e1e1e] text-[#cccccc] text-sm rounded border border-[#3e3e42] px-2 py-1 focus:outline-none focus:border-[#0078d4]"
+                            >
+                                ${AVAILABLE_MODELS.map(model => `
+                                    <option value="${model.id}" ${model.id === SELECTED_MODEL ? 'selected' : ''}>${model.name}</option>
+                                `).join('')}
+                            </select>
+                        </div>
                         <p class="chat-description text-sm text-[#8a8a8a]">Ask questions about your code or get help with programming</p>
                     </div>
                 </div>
@@ -762,7 +786,7 @@ $(document).ready(async function () {
                         "Authorization": `Bearer ${OPENROTER_API_KEY}`,
                 },
                 body: JSON.stringify({
-                    model: 'meta-llama/llama-3.2-3b-instruct:free',
+                    model: SELECTED_MODEL,
                     messages: [
                         {
                             role: 'system',
@@ -817,11 +841,17 @@ $(document).ready(async function () {
             // API Key Handling
             const apiKeyInput = chatContainer.querySelector("#openrouter-api-key");
             const saveKeyBtn = chatContainer.querySelector("#save-api-key");
+            const modelSelecter = chatContainer.querySelector("#model-selecter");
 
             saveKeyBtn.addEventListener("click", () => {
                 const newKey = apiKeyInput.value.trim();
                 setOpenRouterApiKey(newKey);
                 addAssistantMessage("API Key saved successfully.");
+            });
+
+            modelSelecter.addEventListener("change", (e) => {
+                setSelectedModel(e.target.value);
+                addAssistantMessage(`Model changed to ${AVAILABLE_MODELS.find(m => m.id === e.target.value).name}`);
             });
 
             container.getElement().append(chatContainer);
